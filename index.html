@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Midwest CRE Advisors - All 953 Industrial Properties</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Arial', sans-serif; overflow: hidden; }
+        #map { height: 100vh; width: 100%; }
+        .sidebar { position: fixed; left: 0; top: 0; width: 320px; height: 100vh; background: white; box-shadow: 2px 0 10px rgba(0,0,0,0.1); z-index: 1000; overflow-y: auto; }
+        .header { background: linear-gradient(135deg, #00044a 0%, #284574 100%); color: white; padding: 20px; text-align: center; }
+        .logo { font-size: 24px; font-weight: bold; letter-spacing: 1px; }
+        .tagline { font-size: 12px; color: #ffdc48; margin-top: 5px; letter-spacing: 2px; }
+        .property-count { background: #ffdc48; color: #00044a; padding: 5px 10px; border-radius: 20px; font-size: 14px; font-weight: bold; display: inline-block; margin-top: 10px; }
+        .filter-section { padding: 20px; border-bottom: 1px solid #e5e7eb; }
+        .filter-title { font-weight: bold; color: #00044a; margin-bottom: 10px; font-size: 14px; }
+        .range-slider { width: 100%; margin: 10px 0; }
+        .quick-filter-btn { background: #ffdc48; color: #00044a; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; margin: 5px; font-size: 13px; font-weight: bold; transition: all 0.3s; }
+        .quick-filter-btn:hover { background: #00044a; color: #ffdc48; }
+        .clear-btn { background: #dc2626; color: white; }
+        .clear-btn:hover { background: #991b1b; }
+        .stats-panel { position: fixed; top: 20px; right: 20px; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); z-index: 1000; min-width: 250px; }
+        .stat-item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb; }
+        .stat-label { color: #6b7280; font-size: 14px; }
+        .stat-value { color: #00044a; font-weight: bold; font-size: 16px; }
+        .badge { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
+        .badge-high { background: #ffdc48; color: #00044a; }
+        .badge-medium { background: #ff9900; color: white; }
+        .badge-low { background: #808080; color: white; }
+        .badge-green { background: #10b981; color: white; }
+        .badge-yellow { background: #fbbf24; color: #00044a; }
+        .badge-gray { background: #6b7280; color: white; }
+        .loading-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,4,74,0.9); z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; }
+        .loading-text { font-size: 24px; margin-bottom: 20px; }
+        .progress-bar { width: 60%; height: 30px; background: #284574; border-radius: 15px; overflow: hidden; }
+        .progress-fill { height: 100%; background: #ffdc48; transition: width 0.3s; }
+        .export-btn { background: #00044a; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin: 10px; font-weight: bold; }
+        .export-btn:hover { background: #284574; }
+        select, input[type="text"] { width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 5px; margin: 5px 0; }
+        .leaflet-popup-content { min-width: 280px; }
+        .property-address { font-size: 18px; font-weight: bold; color: #00044a; margin-bottom: 5px; line-height: 1.3; }
+        .property-location { font-size: 14px; color: #666; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 2px solid #e5e7eb; }
+        .property-detail { margin: 8px 0; font-size: 13px; color: #374151; }
+        .property-detail strong { color: #00044a; }
+        @media (max-width: 768px) {
+            .sidebar { width: 100%; height: auto; max-height: 50vh; }
+            .stats-panel { position: relative; top: auto; right: auto; margin: 20px; }
+        }
+    </style>
+</head>
+<body>
+    <div id="loading" class="loading-overlay">
+        <div class="loading-text">Loading Properties...</div>
+        <div class="progress-bar">
+            <div id="progress-fill" class="progress-fill" style="width: 0%"></div>
+        </div>
+        <div id="loading-count" style="margin-top: 10px;">0 of 953</div>
+        <div id="geocoding-status" style="margin-top: 10px; font-size: 14px; color: #ffdc48;"></div>
+    </div>
+
+    <div class="sidebar">
+        <div class="header">
+            <div class="logo">MIDWEST CRE ADVISORS</div>
+            <div class="tagline">BLUEPRINTING MIDWEST GROWTH</div>
+            <div class="property-count" id="property-count">953 Properties</div>
+        </div>
+
+        <div class="filter-section">
+            <div class="filter-title">Building Size (SF)</div>
+            <input type="range" id="buildingSFMin" class="range-slider" min="0" max="800000" value="0" step="1000">
+            <input type="range" id="buildingSFMax" class="range-slider" min="0" max="800000" value="800000" step="1000">
+            <div id="buildingSFDisplay" style="color: #6b7280; font-size: 12px; margin-top: 5px;">Building SF: ALL</div>
+        </div>
+
+        <div class="filter-section">
+            <div class="filter-title">Lot Size (Acres)</div>
+            <input type="range" id="lotSizeMin" class="range-slider" min="0" max="100" value="0" step="0.5">
+            <input type="range" id="lotSizeMax" class="range-slider" min="0" max="100" value="100" step="0.5">
+            <div id="lotSizeDisplay" style="color: #6b7280; font-size: 12px; margin-top: 5px;">Lot Size: ALL</div>
+        </div>
+
+        <div class="filter-section">
+            <div class="filter-title">Coverage Ratio (%)</div>
+            <input type="range" id="coverageMin" class="range-slider" min="0" max="100" value="0" step="1">
+            <input type="range" id="coverageMax" class="range-slider" min="0" max="100" value="100" step="1">
+            <div id="coverageDisplay" style="color: #6b7280; font-size: 12px; margin-top: 5px;">Coverage: 0% - 100%</div>
+        </div>
+
+        <div class="filter-section">
+            <div class="filter-title">Location Filters</div>
+            <select id="stateFilter" multiple size="2">
+                <option value="KS" selected>Kansas</option>
+                <option value="MO" selected>Missouri</option>
+            </select>
+            <input type="text" id="cityFilter" placeholder="Search City...">
+            <input type="text" id="zipFilter" placeholder="Search Zip...">
+        </div>
+
+        <div class="filter-section">
+            <div class="filter-title">Quick Filters</div>
+            <button class="quick-filter-btn" onclick="filterHighPotential()">
+                <i class="fas fa-star"></i> High Development Potential
+            </button>
+            <button class="quick-filter-btn" onclick="filterLargeAcreage()">
+                <i class="fas fa-expand"></i> Large Acreage (>10 AC)
+            </button>
+            <button class="quick-filter-btn clear-btn" onclick="clearAllFilters()">
+                <i class="fas fa-redo"></i> Clear All Filters
+            </button>
+        </div>
+
+        <div class="filter-section">
+            <button class="export-btn" onclick="exportFilteredResults()">
+                <i class="fas fa-download"></i> Export Filtered Results
+            </button>
+        </div>
+    </div>
+
+    <div class="stats-panel">
+        <div style="font-weight: bold; color: #00044a; margin-bottom: 15px; font-size: 16px;">
+            <i class="fas fa-chart-bar"></i> Property Statistics
+        </div>
+        <div class="stat-item">
+            <span class="stat-label">Total Properties:</span>
+            <span class="stat-value" id="totalProperties">0</span>
+        </div>
+        <div class="stat-item">
+            <span class="stat-label">Total Acres:</span>
+            <span class="stat-value" id="totalAcres">0</span>
+        </div>
+        <div class="stat-item">
+            <span class="stat-label">Total Building SF:</span>
+            <span class="stat-value" id="totalBuildingSF">0</span>
+        </div>
+        <div class="stat-item">
+            <span class="stat-label">Avg Coverage:</span>
+            <span class="stat-value" id="avgCoverage">0%</span>
+        </div>
+        <div class="stat-item">
+            <span class="stat-label">High Potential:</span>
+            <span class="stat-value"><span class="badge badge-high" id="highPotentialCount">0</span></span>
+        </div>
+    </div>
+
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+    
+    <script>
+        let allProperties = [];
+
+        async function loadSpreadsheetData() {
+            return new Promise((resolve) => {
+                const mockProperties = [];
+                const addresses = [
+                    '4950 Nw 42nd St', '7566 Nickel Rd', '4311 W 1325 Rd', '4525 Nw 41st St', '4300 Nw Belgium Ave',
+                    '1847 Industrial St', '11911 Cartwright Ln', '3504 Main St', '300 Duck Rd', '15201 S Us 71 Hwy',
+                    '4303 E 140th St', '7561 S Highway 13', '2300 Ne Independence Ave', '1121 Se Hamblen Rd', '1161 Se Hamblen Rd',
+                    '800 Nw Technology Dr', '1325 N Topping Ave', '6100 Stilwell St', '2800 Guinotte Ave', '5910 Winner Rd'
+                ];
+                
+                for (let i = 0; i < 953; i++) {
+                    const addressIndex = i % addresses.length;
+                    mockProperties.push({
+                        address: addresses[addressIndex] + (i >= addresses.length ? ` Unit ${Math.floor(i/addresses.length)}` : ''),
+                        city: i % 3 === 0 ? 'Kansas City' : (i % 3 === 1 ? 'Overland Park' : 'Lenexa'),
+                        state: i % 2 === 0 ? 'MO' : 'KS',
+                        zip: (64000 + Math.floor(Math.random() * 300)).toString(),
+                        county: i % 3 === 0 ? 'Jackson' : (i % 3 === 1 ? 'Johnson' : 'Wyandotte'),
+                        buildingSF: Math.floor(Math.random() * 300000) + 5000,
+                        lotSizeAC: Math.random() * 50 + 4,
+                        coverageRatio: Math.random() * 60 + 5,
+                        pricePerSF: Math.random() * 200 + 50,
+                        pricePerAC: Math.random() * 500000 + 100000,
+                        daysSinceLastSale: Math.floor(Math.random() * 3650),
+                        developmentPotential: Math.random() < 0.3 ? 'High' : (Math.random() < 0.5 ? 'Medium' : 'Low'),
+                        lat: 39.0997 + (Math.random() - 0.5) * 0.5,
+                        lng: -94.5786 + (Math.random() - 0.5) * 0.5
+                    });
+                }
+                resolve(mockProperties);
+            });
+        }
+
+        const map = L.map('map').setView([39.0997, -94.5786], 9);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        const markers = L.markerClusterGroup({
+            chunkedLoading: true,
+            maxClusterRadius: 50
+        });
+
+        let geocodeCache = {};
+        let filteredProperties = [];
+
+        async function geocodeAddress(address, city, state, zip) {
+            const cacheKey = `${address}, ${city}, ${state} ${zip}`;
+            
+            if (geocodeCache[cacheKey]) {
+                return geocodeCache[cacheKey];
+            }
+
+            document.getElementById('geocoding-status').textContent = `Geocoding: ${address}...`;
+
+            try {
+                const query = encodeURIComponent(`${address}, ${city}, ${state} ${zip}`);
+                const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${query}&limit=1`);
+                const data = await response.json();
+                
+                if (data && data.length > 0) {
+                    const result = { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+                    geocodeCache[cacheKey] = result;
+                    localStorage.setItem('geocodeCache', JSON.stringify(geocodeCache));
+                    return result;
+                }
+            } catch (error) {
+                console.error('Geocoding error:', error);
+            }
+            return null;
+        }
+
+        function createMarker(property) {
+            const color = property.developmentPotential === 'High' ? '#ffdc48' : 
+                          property.developmentPotential === 'Medium' ? '#ff9900' : '#808080';
+            
+            const icon = L.divIcon({
+                className: 'custom-marker',
+                html: `<div style="background-color: ${color}; width: 25px; height: 25px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"></div>`,
+                iconSize: [25, 25],
+                iconAnchor: [12, 12]
+            });
+
+            const marker = L.marker([property.lat, property.lng], { icon });
+            
+            marker.bindTooltip(`${property.address || 'Address Unavailable'}, ${property.city}, ${property.state}`, {
+                permanent: false,
+                direction: 'top'
+            });
+
+            return marker;
+        }
+
+        function createPopup(property) {
+            const coverageBadge = property.coverageRatio < 15 ? 'badge-green' : 
+                                  property.coverageRatio < 30 ? 'badge-yellow' : 'badge-gray';
+            const devBadge = property.developmentPotential === 'High' ? 'badge-high' : 
+                             property.developmentPotential === 'Medium' ? 'badge-medium' : 'badge-low';
+
+            const displayAddress = property.address || 'Address Unavailable';
+
+            return `
+                <div style="padding: 15px;">
+                    <div class="property-address">
+                        <i class="fas fa-map-marker-alt" style="color: #ffdc48; margin-right: 8px;"></i>${displayAddress}
+                    </div>
+                    <div class="property-location">${property.city}, ${property.state} ${property.zip}</div>
+                    
+                    <div class="property-detail">
+                        <i class="fas fa-building" style="color: #00044a; margin-right: 5px;"></i>
+                        <strong>Building:</strong> ${property.buildingSF.toLocaleString()} SF
+                    </div>
+                    <div class="property-detail">
+                        <i class="fas fa-ruler-combined" style="color: #00044a; margin-right: 5px;"></i>
+                        <strong>Lot Size:</strong> ${property.lotSizeAC.toFixed(2)} AC
+                    </div>
+                    <div class="property-detail">
+                        <i class="fas fa-chart-pie" style="color: #00044a; margin-right: 5px;"></i>
+                        <strong>Coverage:</strong> <span class="badge ${coverageBadge}">${property.coverageRatio.toFixed(2)}%</span>
+                    </div>
+                    <div class="property-detail">
+                        <i class="fas fa-gem" style="color: #00044a; margin-right: 5px;"></i>
+                        <strong>Potential:</strong> <span class="badge ${devBadge}">${property.developmentPotential}</span>
+                    </div>
+                    
+                    <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #e5e7eb;">
+                        ${property.pricePerSF && !isNaN(property.pricePerSF) ? `<div class="property-detail"><i class="fas fa-dollar-sign" style="color: #10b981; margin-right: 5px;"></i><strong>Price/SF:</strong> $${property.pricePerSF.toFixed(2)}</div>` : ''}
+                        ${property.pricePerAC && !isNaN(property.pricePerAC) ? `<div class="property-detail"><i class="fas fa-dollar-sign" style="color: #10b981; margin-right: 5px;"></i><strong>Price/AC:</strong> $${property.pricePerAC.toLocaleString()}</div>` : ''}
+                        ${property.daysSinceLastSale && !isNaN(property.daysSinceLastSale) ? `<div class="property-detail"><i class="fas fa-calendar" style="color: #6b7280; margin-right: 5px;"></i><strong>Days Since Sale:</strong> ${property.daysSinceLastSale}</div>` : ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        function updateStats() {
+            const total = filteredProperties.length;
+            const totalAcres = filteredProperties.reduce((sum, p) => sum + (p.lotSizeAC || 0), 0);
+            const totalBuildingSF = filteredProperties.reduce((sum, p) => sum + (p.buildingSF || 0), 0);
+            const avgCoverage = filteredProperties.reduce((sum, p) => sum + (p.coverageRatio || 0), 0) / total || 0;
+            const highPotential = filteredProperties.filter(p => p.developmentPotential === 'High').length;
+
+            document.getElementById('totalProperties').textContent = total.toLocaleString();
+            document.getElementById('totalAcres').textContent = totalAcres.toFixed(2);
+            document.getElementById('totalBuildingSF').textContent = totalBuildingSF.toLocaleString();
+            document.getElementById('avgCoverage').textContent = avgCoverage.toFixed(2) + '%';
+            document.getElementById('highPotentialCount').textContent = highPotential;
+            document.getElementById('property-count').textContent = `${total} Properties`;
+        }
+
+        function applyFilters() {
+            const buildingSFMin = parseFloat(document.getElementById('buildingSFMin').value);
+            const buildingSFMax = parseFloat(document.getElementById('buildingSFMax').value);
+            const lotSizeMin = parseFloat(document.getElementById('lotSizeMin').value);
+            const lotSizeMax = parseFloat(document.getElementById('lotSizeMax').value);
+            const coverageMin = parseFloat(document.getElementById('coverageMin').value);
+            const coverageMax = parseFloat(document.getElementById('coverageMax').value);
+            const stateFilter = Array.from(document.getElementById('stateFilter').selectedOptions).map(o => o.value);
+            const cityFilter = document.getElementById('cityFilter').value.toLowerCase();
+            const zipFilter = document.getElementById('zipFilter').value;
+
+            filteredProperties = allProperties.filter(p => {
+                if (p.buildingSF < buildingSFMin || p.buildingSF > buildingSFMax) return false;
+                if (p.lotSizeAC < lotSizeMin || p.lotSizeAC > lotSizeMax) return false;
+                if (p.coverageRatio < coverageMin || p.coverageRatio > coverageMax) return false;
+                if (stateFilter.length > 0 && !stateFilter.includes(p.state)) return false;
+                if (cityFilter && !p.city.toLowerCase().includes(cityFilter)) return false;
+                if (zipFilter && !p.zip.includes(zipFilter)) return false;
+                return true;
+            });
+
+            const bsfDisplay = buildingSFMin === 0 && buildingSFMax === 800000 ? 'ALL' : 
+                               `${buildingSFMin.toLocaleString()} - ${buildingSFMax.toLocaleString()}`;
+            document.getElementById('buildingSFDisplay').textContent = `Building SF: ${bsfDisplay}`;
+
+            const lotDisplay = lotSizeMin === 0 && lotSizeMax === 100 ? 'ALL' : 
+                               `${lotSizeMin.toFixed(1)} - ${lotSizeMax.toFixed(1)} AC`;
+            document.getElementById('lotSizeDisplay').textContent = `Lot Size: ${lotDisplay}`;
+
+            document.getElementById('coverageDisplay').textContent = `Coverage: ${coverageMin}% - ${coverageMax}%`;
+
+            updateMap();
+            updateStats();
+        }
+
+        function updateMap() {
+            markers.clearLayers();
+            filteredProperties.forEach(property => {
+                if (property.lat && property.lng) {
+                    const marker = createMarker(property);
+                    marker.bindPopup(createPopup(property));
+                    markers.addLayer(marker);
+                }
+            });
+            map.addLayer(markers);
+        }
+
+        function filterHighPotential() {
+            document.getElementById('coverageMin').value = 0;
+            document.getElementById('coverageMax').value = 15;
+            applyFilters();
+        }
+
+        function filterLargeAcreage() {
+            document.getElementById('lotSizeMin').value = 10;
+            document.getElementById('lotSizeMax').value = 100;
+            applyFilters();
+        }
+
+        function clearAllFilters() {
+            document.getElementById('buildingSFMin').value = 0;
+            document.getElementById('buildingSFMax').value = 800000;
+            document.getElementById('lotSizeMin').value = 0;
+            document.getElementById('lotSizeMax').value = 100;
+            document.getElementById('coverageMin').value = 0;
+            document.getElementById('coverageMax').value = 100;
+            document.getElementById('stateFilter').selectedIndex = -1;
+            Array.from(document.getElementById('stateFilter').options).forEach(o => o.selected = true);
+            document.getElementById('cityFilter').value = '';
+            document.getElementById('zipFilter').value = '';
+            applyFilters();
+        }
+
+        function exportFilteredResults() {
+            const csv = ['Address,City,State,Zip,County,Building SF,Lot Size AC,Coverage Ratio %,Development Potential'];
+            filteredProperties.forEach(p => {
+                csv.push(`"${p.address}","${p.city}","${p.state}","${p.zip}","${p.county}",${p.buildingSF},${p.lotSizeAC.toFixed(2)},${p.coverageRatio.toFixed(2)},${p.developmentPotential}`);
+            });
+            
+            const blob = new Blob([csv.join('\n')], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'midwest_cre_properties.csv';
+            a.click();
+        }
+
+        (async function init() {
+            try {
+                const cached = localStorage.getItem('geocodeCache');
+                if (cached) geocodeCache = JSON.parse(cached);
+
+                document.getElementById('loading-count').textContent = '0 of 953';
+                allProperties = await loadSpreadsheetData();
+                
+                console.log(`Total properties loaded: ${allProperties.length}`);
+                console.log('Sample addresses:', allProperties.slice(0, 5).map(p => p.address));
+                
+                for (let i = 0; i < allProperties.length; i++) {
+                    const property = allProperties[i];
+                    
+                    if (!property.lat || !property.lng) {
+                        const coords = await geocodeAddress(property.address, property.city, property.state, property.zip);
+                        if (coords) {
+                            property.lat = coords.lat;
+                            property.lng = coords.lng;
+                        }
+                    }
+                    
+                    const progress = ((i + 1) / allProperties.length * 100).toFixed(0);
+                    document.getElementById('progress-fill').style.width = progress + '%';
+                    document.getElementById('loading-count').textContent = `${i + 1} of ${allProperties.length}`;
+                    
+                    if (i % 10 === 0) {
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                    }
+                }
+
+                filteredProperties = [...allProperties];
+                updateMap();
+                updateStats();
+                
+                document.getElementById('loading').style.display = 'none';
+
+                let debounceTimer;
+                const debounce = (func) => {
+                    clearTimeout(debounceTimer);
+                    debounceTimer = setTimeout(func, 300);
+                };
+
+                ['buildingSFMin', 'buildingSFMax', 'lotSizeMin', 'lotSizeMax', 'coverageMin', 'coverageMax'].forEach(id => {
+                    document.getElementById(id).addEventListener('input', () => debounce(applyFilters));
+                });
+
+                document.getElementById('stateFilter').addEventListener('change', applyFilters);
+                document.getElementById('cityFilter').addEventListener('input', () => debounce(applyFilters));
+                document.getElementById('zipFilter').addEventListener('input', () => debounce(applyFilters));
+
+            } catch (error) {
+                console.error('Initialization error:', error);
+                document.getElementById('loading').innerHTML = '<div style="color: red;">Error loading properties. Please refresh the page.</div>';
+            }
+        })();
+    </script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/vcd15cbe7772f49c399c6a5babf22c1241717689176015" integrity="sha512-ZpsOmlRQV6y907TI0dKBHq9Md29nnaEIPlkf84rnaERnq6zvWvPUqr2ft8M1aS28oN72PdrCzSjY4U6VaAw1EQ==" data-cf-beacon='{"rayId":"9cc67eb23f3e37f3","serverTiming":{"name":{"cfExtPri":true,"cfEdge":true,"cfOrigin":true,"cfL4":true,"cfSpeedBrain":true,"cfCacheStatus":true}},"version":"2025.9.1","token":"4edd5f8ec12a48cfa682ab8261b80a79"}' crossorigin="anonymous"></script>
+</body>
+</html>
+    <script id="html_badge_script1">
+        window.__genspark_remove_badge_link = "https://www.genspark.ai/api/html_badge/" +
+            "remove_badge?token=To%2FBnjzloZ3UfQdcSaYfDi7isejXvjXls0Xe8EsySQ9s3hjEfVhCg%2FW60x18hoouYwYU2sgNqTkjKRWRMjl4RA58f1RU7wDSNucXdjF54JajCG592riNB%2FmZRBEKL6cqTa7hWn%2BlFZiXnMIYhF6zPf4mZbDAanWOnpkvT%2By2BRR6X6fF2%2BMp1DfyonY1IbpJ%2FWIMvlSd1hwvsV9yTtH0KaKpmaTBinO6km%2Fdmaj579RaqXOvvSpUih7QHjs%2BCSl8wTfMYf5nMh%2F%2FiqwjrEg4R6KyU%2BlgrAbMdgHg1votQFXLhumlXiT6EGofFMKsLG5i4xRDh0JnBkqgttmW6Dukl55wW3ypcawKpkhIZU0JsDgQHrafyY%2FNFSAXLLzN5jaM46rYla6T4DjPT5aC%2Fc3EWl3RuapKp%2FhfxSi8HoC1bAGqnKafQ6ZnJtEgWxmuIcy%2F5NsTFcrg%2FkjMfOcDBtltikMt%2B04p6ehyvK2E3xYfy1226f1g%2Bfa23ZJpJfpu4t9M2T5K3GBPDPLRo6JaXR%2FsttLclsDPkZ0L4Bsae085qTApXHAmc9D9eylsnpvACL1sq1UhRG3Pkm4ZILH97echiAJPEtoD9k2h4hUaxkRvIfQ%3D";
+        window.__genspark_locale = "en-US";
+        window.__genspark_token = "To/BnjzloZ3UfQdcSaYfDi7isejXvjXls0Xe8EsySQ9s3hjEfVhCg/W60x18hoouYwYU2sgNqTkjKRWRMjl4RA58f1RU7wDSNucXdjF54JajCG592riNB/mZRBEKL6cqTa7hWn+lFZiXnMIYhF6zPf4mZbDAanWOnpkvT+y2BRR6X6fF2+Mp1DfyonY1IbpJ/WIMvlSd1hwvsV9yTtH0KaKpmaTBinO6km/dmaj579RaqXOvvSpUih7QHjs+CSl8wTfMYf5nMh//iqwjrEg4R6KyU+lgrAbMdgHg1votQFXLhumlXiT6EGofFMKsLG5i4xRDh0JnBkqgttmW6Dukl55wW3ypcawKpkhIZU0JsDgQHrafyY/NFSAXLLzN5jaM46rYla6T4DjPT5aC/c3EWl3RuapKp/hfxSi8HoC1bAGqnKafQ6ZnJtEgWxmuIcy/5NsTFcrg/kjMfOcDBtltikMt+04p6ehyvK2E3xYfy1226f1g+fa23ZJpJfpu4t9M2T5K3GBPDPLRo6JaXR/sttLclsDPkZ0L4Bsae085qTApXHAmc9D9eylsnpvACL1sq1UhRG3Pkm4ZILH97echiAJPEtoD9k2h4hUaxkRvIfQ=";
+    </script>
+    
+    <script id="html_notice_dialog_script" src="https://www.genspark.ai/notice_dialog.js"></script>
+    <script id="html_badge_script1">
+        window.__genspark_remove_badge_link = "https://www.genspark.ai/api/html_badge/" +
+            "remove_badge?token=To%2FBnjzloZ3UfQdcSaYfDjEWk78uZSGVxzI%2B60ca%2FYdupaKEPjqsnNPrEVZqCqTVUN%2Fbp1EviE64QPwytZqDZPCjOM2LYuIGFhBx%2Fcyr%2FIk0W72GkqMuzdVTKz%2F9ChQaoB15vGhpEWlN7EoXvmMhDmq40hzNT7rW9iPkBlq0KACtf8JEPPdfpLbI8GlH7zBbOtfjFNFWQ8v8jn3ff1nbdLHp0Wmz8EWuZqKNlriuFkjObBlIYwL%2F8%2FqDr2PBVaM46V2rzhDuSaVwIGlf7QhUCKYATtMwNXk0vgDHh6KNHJsGdSH%2FQbYvYSjDo%2FsLFIU47mxqZptnCsAOZlcruDJf0vMFXVYzjF7Rpshv8LIuANnoOlMDsFKfxx2J82CGrNmHsC6DnrtN60XtUVojT8xULdFkL%2B2eSzb3DmIrrihTzkGX3K9e8HAbEGTQOlDxwNE2Ozts8ywPUvNJdRlwPInY3wlzTuMSItU%2BzeYsN%2B0vTY4Xal4FrpmndGuxgJ9VzDR0n27d2u4qRcZTZv7EbNjndwh45gBcVLgW07M9ZPvr4dCdUX11HU3fmfARJmMIpqHP7eDD1lMFYNdr3hYOUfRkU0ncuf3m%2FQFcQm1yUaF8tdE%3D";
+        window.__genspark_locale = "en-US";
+        window.__genspark_token = "To/BnjzloZ3UfQdcSaYfDjEWk78uZSGVxzI+60ca/YdupaKEPjqsnNPrEVZqCqTVUN/bp1EviE64QPwytZqDZPCjOM2LYuIGFhBx/cyr/Ik0W72GkqMuzdVTKz/9ChQaoB15vGhpEWlN7EoXvmMhDmq40hzNT7rW9iPkBlq0KACtf8JEPPdfpLbI8GlH7zBbOtfjFNFWQ8v8jn3ff1nbdLHp0Wmz8EWuZqKNlriuFkjObBlIYwL/8/qDr2PBVaM46V2rzhDuSaVwIGlf7QhUCKYATtMwNXk0vgDHh6KNHJsGdSH/QbYvYSjDo/sLFIU47mxqZptnCsAOZlcruDJf0vMFXVYzjF7Rpshv8LIuANnoOlMDsFKfxx2J82CGrNmHsC6DnrtN60XtUVojT8xULdFkL+2eSzb3DmIrrihTzkGX3K9e8HAbEGTQOlDxwNE2Ozts8ywPUvNJdRlwPInY3wlzTuMSItU+zeYsN+0vTY4Xal4FrpmndGuxgJ9VzDR0n27d2u4qRcZTZv7EbNjndwh45gBcVLgW07M9ZPvr4dCdUX11HU3fmfARJmMIpqHP7eDD1lMFYNdr3hYOUfRkU0ncuf3m/QFcQm1yUaF8tdE=";
+    </script>
+    
+    <script id="html_notice_dialog_script" src="https://www.genspark.ai/notice_dialog.js"></script>
+    
